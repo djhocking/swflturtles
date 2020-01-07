@@ -1,0 +1,16 @@
+Package: swflturtles
+Title: What the Package Does (One Line, Title Case)
+Version: 0.0.0.9000
+Authors@R: 
+    person(given = "Daniel",
+           family = "Hocking",
+           role = c("aut", "cre"),
+           email = "djhocking@frostburg.edu")
+Description: Analyze turtle radiotelemetry data from Southwest Florida Turtle Project
+License: MIT + file LICENSE
+ByteCompile: true
+Encoding: UTF-8
+LazyData: true
+Imports: 
+    dplyr,
+    ggplot2
