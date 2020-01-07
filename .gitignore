@@ -1,6 +1,7 @@
 .Rproj.user
 .Rhistory
 .RData
+*.DS_Store
 
 Naples_Preserve_and_Habitat_types.png
 *.xls
