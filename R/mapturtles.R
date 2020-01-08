@@ -9,10 +9,12 @@ library(tidyverse)
 library(adehabitatHR) # for mcp function
 library(scales)
 suppressPackageStartupMessages(library(ggmap))
-library(lintr) # code linting
-library(raster) # raster handling (needed for relief)
-library(viridis) # viridis color scale
-library(cowplot) # stack ggplots
+library(broom)
+library(ggsn)
+# library(lintr) # code linting
+# library(raster) # raster handling (needed for relief)
+# library(viridis) # viridis color scale
+# library(cowplot) # stack ggplots
 
 
 #----- Load data -----
@@ -73,30 +75,48 @@ mcp_latlon <- spTransform(turtles_mcp, CRS("+proj=longlat"))
 # ggmap now requires registration with google - consider other options
 basemap_turtles <- get_map(location = c(lon = mean(points_latlon@coords[ , 1]),
                                         lat = mean(points_latlon@coords[ , 2])),
-                           maptype = "hybrid",
-                           zoom = 18,
+                           maptype = "satellite",
+                           zoom = 17,
                            source = "google")
+
+# basemap_turtles <- get_map(c(left = min(points_latlon@coords[ , 1]),
+#                              bottom = min(points_latlon@coords[ , 2]),
+#                              right = max(points_latlon@coords[ , 1]),
+#                              top = max(points_latlon@coords[ , 2])),
+#                            maptype = "terrain",
+#                            zoom = 18,
+#                            source = "stamen")
 
 # make dataframe for use in ggplot/ggmap
 turtles_sdf <- data.frame(id = as.character(points_latlon@data$id),
                           points_latlon@coords)
 
-map_turtles1 <- ggmap(basemap_turtles) +
-  geom_polygon(data = tidy(mcp_latlon),
-               aes(long, lat, colour = id, fill = id),
-               alpha = 0.3) + # alpha sets the transparency
+polys <- as.data.frame(broom::tidy(mcp_latlon))
+
+map_turtles1 <- ggmap(basemap_turtles, extent = "panel") +
+  geom_polygon(data = polys,
+               aes(x = long, y = lat, fill = id, colour = id),
+               alpha = 0.3) +
   geom_point(data = turtles_sdf,
              aes(x = x, y = y, colour = id))  +
-  theme(legend.position = c(0.9, 0.70)) +
-  labs(x = "Longitude", y = "Latitude")
+  coord_cartesian(xlim = c(min(points_latlon@coords[ , 1])-0.0002, max(points_latlon@coords[ , 1])+0.0002),
+                  ylim = c(min(points_latlon@coords[ , 2])-0.0002, max(points_latlon@coords[ , 2])+0.0002)) +
+  theme(legend.position = c(0.94, 0.72)) +
+  labs(x = "Longitude", y = "Latitude") +
+  ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
 
 map_turtles1
 
+# label the mis-marked point
+ggplot(turtles_df, aes(x = -1*lon, y = lat)) + geom_point() + geom_text(data = filter(turtles_df, id == 3), aes(label = date), hjust = 0, vjust = 0)
+
 ggsave(map_turtles1, file = "analysis/figures/tbauri_mcp_100.pdf")
 
+# Maybe get a raster manually and use sf and ggplot2 rather than ggmap in the future given new api restrictions by google. use library sf in place of sp now - translate above to sf if possible later
 
 
-# Maybe get a rasta manually and use sf and ggplot2 rather than ggmap in the future given new api restrictions by google. use library sf in place of sp now - translate above to sf if possible later
+#----- Kernal density estimates and maps -----
+
 
 
 #----- annimate movements -----
