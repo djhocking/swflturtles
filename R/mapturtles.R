@@ -68,7 +68,7 @@ plot(points_utm, col = as.factor(points_utm@data$id), pch = 20)
 plot(turtles_mcp, col = alpha(1:n_turtles, 0.5), add = TRUE)
 
 #---- plot home ranges on base map -----
-# convert to lat-lon for human readable scale
+# convert to lat-lon for human readable scale for map
 points_latlon <- spTransform(points_sp, CRS("+proj=longlat"))
 mcp_latlon <- spTransform(turtles_mcp, CRS("+proj=longlat"))
 
@@ -78,14 +78,6 @@ basemap_turtles <- get_map(location = c(lon = mean(points_latlon@coords[ , 1]),
                            maptype = "satellite",
                            zoom = 17,
                            source = "google")
-
-# basemap_turtles <- get_map(c(left = min(points_latlon@coords[ , 1]),
-#                              bottom = min(points_latlon@coords[ , 2]),
-#                              right = max(points_latlon@coords[ , 1]),
-#                              top = max(points_latlon@coords[ , 2])),
-#                            maptype = "terrain",
-#                            zoom = 18,
-#                            source = "stamen")
 
 # make dataframe for use in ggplot/ggmap
 turtles_sdf <- data.frame(id = as.character(points_latlon@data$id),
