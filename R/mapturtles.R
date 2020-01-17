@@ -137,6 +137,9 @@ ggsave(map_turtles2, file = "analysis/figures/tbauri_mcp_100_sex.tiff", dpi = 10
 
 
 #----- Kernal density estimates and maps -----
+library(sf)
+library(rgeos)
+library(leaflet)
 
 # bivariate normal utilization distribtution for prob density of finding animal at a point
 
@@ -151,7 +154,15 @@ turtle_kernel_lscv <- kernelUD(points_utm, h = "LSCV")
 class(turtle_kernel)
 
 # convert kernel to spatial polygon
-kernel_sp <- getverticeshr(turtle_kernel_lscv, percent = 95, unin = "m", unout = "ha")
+kernel_sp <- getverticeshr(turtle_kernel_lscv, percent = 90, unin = "m", unout = "ha")
+data.frame(kernel_sp)
+
+home_ranges <- turtles_mcp %>%
+  data.frame() %>%
+  rename(mcp_100 = area) %>%
+  left_join(data.frame(kernel_sp)) %>%
+    rename(kernel_90 = area)
+write_csv(home_ranges, "analysis/data/derived_data/home_ranges.csv")
 
 kernel_latlon <- spTransform(kernel_sp, CRS("+proj=longlat"))
 
@@ -163,17 +174,31 @@ polys_kernel <- as.data.frame(broom::tidy(kernel_latlon)) %>%
 map_turtles_kernels <- ggmap(basemap_turtles, extent = "panel") +
   geom_polygon(data = polys_kernel,
                aes(x = long, y = lat, fill = id, colour = id),
-               alpha = 0.3)
+               alpha = 0.3) # +
+  # coord_cartesian(xlim = c(min(points_latlon@coords[ , 1])-0.0002, max(points_latlon@coords[ , 1])+0.0002),
+  #                 ylim = c(min(points_latlon@coords[ , 2])-0.0002, max(points_latlon@coords[ , 2])+0.0002)) +
+  # theme(legend.position = c(0.94, 0.72)) +
+  # labs(x = "Longitude", y = "Latitude") +
+  # ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
+map_turtles_kernels
+ggsave(map_turtles2, file = "analysis/figures/tbauri_kernel_90.pdf", width = 8, units = "in")
+
 
 kernel_vol <- getvolumeUD(turtle_kernel_lscv)
 
 image(kernel_vol[[1]])
-image(kernel_vol[[2]])
 # plot(kernel_vol[[2]], add = T)
 xyzv <- as.image.SpatialGridDataFrame(kernel_vol[[1]])
 contour(xyzv, add=TRUE)
+
+image(kernel_vol[[2]])
 contour(as.image.SpatialGridDataFrame(kernel_vol[[2]]), add=TRUE)
 
+turtle_kernel_lscv2 <- kernelUD(points_utm, h = "LSCV", same4all = TRUE)
+# kernel_vol2 <- getvolumeUD(turtle_kernel_lscv, same4all = TRUE)
+foo <- estUDm2spixdf(turtle_kernel_lscv2)
+plot(foo) # potential to separate them or add them all on the basemap?
+# image(foo)
 
 crs(kernel_vol[[1]]) <- "+proj=utm +zone=17 +datum=WGS84 +units=m"
 kernel_vol[[1]] <- projectRaster(raster(kernel_vol[[1]]), crs = "+proj=longlat")
