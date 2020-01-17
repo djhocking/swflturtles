@@ -11,6 +11,7 @@ library(scales)
 suppressPackageStartupMessages(library(ggmap))
 library(broom)
 library(ggsn)
+library(raster)
 # library(lintr) # code linting
 # library(raster) # raster handling (needed for relief)
 # library(viridis) # viridis color scale
@@ -19,6 +20,8 @@ library(ggsn)
 
 #----- Load data -----
 turtles_df <- read_csv("analysis/data/raw_data/bauri_telemetry_data_Naples_Preserve_2019-2020.csv") # data recorded on GPS in WGS84
+individuals_df <- read_csv("analysis/data/raw_data/bauri_individual_info.csv") %>% # individual covariates including sex
+  mutate(id = as.character(id))
 
 #----- data summary -----
 str(turtles_df) # structure of the data
@@ -81,33 +84,166 @@ basemap_turtles <- get_map(location = c(lon = mean(points_latlon@coords[ , 1]),
 
 # make dataframe for use in ggplot/ggmap
 turtles_sdf <- data.frame(id = as.character(points_latlon@data$id),
-                          points_latlon@coords)
+                          points_latlon@coords) %>%
+  left_join(individuals_df)
 
-polys <- as.data.frame(broom::tidy(mcp_latlon))
+polys <- as.data.frame(broom::tidy(mcp_latlon)) %>%
+  mutate(id = as.character(id)) %>%
+  left_join(individuals_df)
 
 map_turtles1 <- ggmap(basemap_turtles, extent = "panel") +
   geom_polygon(data = polys,
                aes(x = long, y = lat, fill = id, colour = id),
                alpha = 0.3) +
-  geom_point(data = turtles_sdf,
-             aes(x = x, y = y, colour = id))  +
+  # geom_point(data = turtles_sdf,
+  #            aes(x = x, y = y, colour = id))  +
   coord_cartesian(xlim = c(min(points_latlon@coords[ , 1])-0.0002, max(points_latlon@coords[ , 1])+0.0002),
                   ylim = c(min(points_latlon@coords[ , 2])-0.0002, max(points_latlon@coords[ , 2])+0.0002)) +
   theme(legend.position = c(0.94, 0.72)) +
   labs(x = "Longitude", y = "Latitude") +
   ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
 
-map_turtles1
+# use consistent colors by turtle so can compare across maps more easily
+# scale_fill_manual(name = "Turtle ID",
+#                   values = num,
+#                   breaks = id) +
+#   scale_colour_manual(name = "Turtle ID",
+#                       values = num,
+#                       breaks = id) +
 
 # label the mis-marked point
-ggplot(turtles_df, aes(x = -1*lon, y = lat)) + geom_point() + geom_text(data = filter(turtles_df, id == 3), aes(label = date), hjust = 0, vjust = 0)
+# ggplot(turtles_df, aes(x = -1*lon, y = lat)) + geom_point() + geom_text(data = filter(turtles_df, id == 3), aes(label = date), hjust = 0, vjust = 0)
 
-ggsave(map_turtles1, file = "analysis/figures/tbauri_mcp_100.pdf")
+ggsave(map_turtles1, file = "analysis/figures/tbauri_mcp_100.pdf", width = 4, units = "in")
+ggsave(map_turtles1, file = "analysis/figures/tbauri_mcp_100.png")
+ggsave(map_turtles1, file = "analysis/figures/tbauri_mcp_100.tiff", dpi = 1000, width = 4, units = "in")
 
 # Maybe get a raster manually and use sf and ggplot2 rather than ggmap in the future given new api restrictions by google. use library sf in place of sp now - translate above to sf if possible later
 
+# separate for males and females
+
+map_turtles2 <- map_turtles1 +
+  geom_point(data = turtles_sdf,
+             aes(x = x, y = y, colour = id))  +
+  facet_wrap(~sex)
+
+
+ggsave(map_turtles2, file = "analysis/figures/tbauri_mcp_100_sex.pdf", width = 8, units = "in")
+ggsave(map_turtles2, file = "analysis/figures/tbauri_mcp_100_sex.png")
+ggsave(map_turtles2, file = "analysis/figures/tbauri_mcp_100_sex.tiff", dpi = 1000, width = 8, units = "in")
+
+
+# color density for overlap density to see hot spot areas?
+
 
 #----- Kernal density estimates and maps -----
+
+# bivariate normal utilization distribtution for prob density of finding animal at a point
+
+# base kernel with default ad hoc smoothing factor
+turtle_kernel <- kernelUD(points_utm, h = "href", )  # href = the reference bandwidth
+
+# kernel using Least Square Cross Validation for smoother
+turtle_kernel_lscv <- kernelUD(points_utm, h = "LSCV")
+
+# plotLSCV(turtle_kernel_lscv)
+
+class(turtle_kernel)
+
+# convert kernel to spatial polygon
+kernel_sp <- getverticeshr(turtle_kernel_lscv, percent = 95, unin = "m", unout = "ha")
+
+kernel_latlon <- spTransform(kernel_sp, CRS("+proj=longlat"))
+
+# make dataframe for use in ggplot/ggmap
+polys_kernel <- as.data.frame(broom::tidy(kernel_latlon)) %>%
+  mutate(id = as.character(id)) %>%
+  left_join(individuals_df)
+
+map_turtles_kernels <- ggmap(basemap_turtles, extent = "panel") +
+  geom_polygon(data = polys_kernel,
+               aes(x = long, y = lat, fill = id, colour = id),
+               alpha = 0.3)
+
+kernel_vol <- getvolumeUD(turtle_kernel_lscv)
+
+image(kernel_vol[[1]])
+image(kernel_vol[[2]])
+# plot(kernel_vol[[2]], add = T)
+xyzv <- as.image.SpatialGridDataFrame(kernel_vol[[1]])
+contour(xyzv, add=TRUE)
+contour(as.image.SpatialGridDataFrame(kernel_vol[[2]]), add=TRUE)
+
+
+crs(kernel_vol[[1]]) <- "+proj=utm +zone=17 +datum=WGS84 +units=m"
+kernel_vol[[1]] <- projectRaster(raster(kernel_vol[[1]]), crs = "+proj=longlat")
+kernal_rasters <- list()
+# kernal_rasters[[1]] <- as.data.frame(broom::tidy(kernel_vol[[1]]))
+
+
+kernal_rasters[[1]] <- as.data.frame.estUD(kernel_vol[[1]]) %>%
+  rename(lon = x, lat = y)
+# projectRaster(kernal_rasters[[1]], crs = "+proj=longlat")
+# crs(kernal_rasters[[1]]) <- "+proj=utm +zone=17 +datum=WGS84 +units=m"
+
+rtp <- rasterToPolygons(kernel_vol[[1]])
+
+bm <- ggmap(basemap_turtles, extent = "panel")
+bm +
+  geom_polygon(data = rtp,
+               aes(x = long, y = lat,
+                   fill = rep(rtp$n, each = 5)),
+               size = 0,
+               alpha = 0.5)  +
+  scale_fill_gradientn("RasterValues", colors = topo.colors(255))
+
+ggmap(basemap_turtles, extent = "panel") +
+  inset_raster(raster(kernel_vol[[1]]))
+
+ggmap(basemap_turtles, extent = "panel") +
+  inset_raster(raster(xyzv))
+
+
+
+ggmap(basemap_turtles, extent = "panel") +
+  geom_raster(kernal_rasters[[1]], aes(lon, lat))
+
+
+ggmap(basemap_turtles, extent = "panel") +
+  # ggplot(data = xyzv, aes(x, y)) +
+  geom_tile(xyzv, aes(x, y, fill = z))
+
+
+ggplot(kernel_vol[[1]], aes(lon, lat, fill = n))
+
+
+kernel_latlon %>%
+  st_as_sf() %>%
+  leaflet() %>%
+  addTiles() %>%
+  addPolygons(fillColor = id, group = id)
+
+kernel_latlon %>%
+  st_as_sf() %>%
+  leaflet() %>%
+  addTiles() %>%
+  # addRasterImage(raster(kernal_rasters[[1]]))
+  addRasterImage(raster(kernel_vol[[1]]), opacity = 0.5)
+# addRasterImage(xyzv)
+
+str(raster(kernel_vol[[1]]))
+summary(raster(kernel_vol[[1]])@data@values)
+hist(raster(kernel_vol[[1]])@data@values)
+
+
+foo <- raster(kernel_vol[[1]]) # filter to values <90?
+
+kernel_latlon %>%
+  st_as_sf() %>%
+  leaflet() %>%
+  addTiles() %>%
+  # addRasterImage(raster(kernal_rasters[[1]]))
+  addRasterImage(raster(kernel_vol[[1]]), opacity = 0.5)
 
 
 
@@ -115,3 +251,8 @@ ggsave(map_turtles1, file = "analysis/figures/tbauri_mcp_100.pdf")
 # visualize straight-line movements between relocation points
 
 
+
+
+#----- clean up -----
+
+rm(list = ls())
