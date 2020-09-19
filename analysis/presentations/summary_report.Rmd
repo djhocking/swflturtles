@@ -1,0 +1,36 @@
+---
+title: "Interactive QAQC"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+```
+
+```{r}
+library(tidyverse)
+library(adehabitatHR) # for mcp function
+library(scales)
+suppressPackageStartupMessages(library(ggmap))
+library(broom)
+library(ggsn)
+library(raster)
+library(lubridate)
+library(plotly)
+```
+
+```{r}
+map_turtles2 <- readRDS(file = here::here("analysis", "figures", "map_turtles_sex_season.rds"))
+
+ggplotly(map_turtles2)
+```
+
+
+
+
+
+
+
+
