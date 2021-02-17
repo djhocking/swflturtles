@@ -1,7 +1,13 @@
-SCUTE ID
-Date
-Lat
-Long
-SEX
-"Behavior: Walking (W), Hiding/Resting (H), Eating (E), Courting (C),Breeding (B), Nesting (N), Other (O)"
-"Habitat: Oak Rosemary Scrub (ORS), Pine Flatwoods (PFW), Prairie Meadow (PM), Former Wetland (FWL), Other (O)"
+id,Scute notching ID
+pit,Last four digits of the PIT tag code
+day,"Day of the week using three-digit abbreviation (e.g. Mon, Tues)"
+date,Date formatted as YYYY-MM-DD
+month,"Month of the year, spelled out fully"
+season,Wet/Dry - defined as …
+lat,Latitude in decimal degrees using WGS84 from GPS unit recorded to 5 decimal places
+lon,Longitude in decimal degrees using WGS84 from GPS unit recorded to 5 decimal places
+temp,Temperature in degrees Celsius recorded to one decimal point 
+RH,Percent relative humidity recoded with …
+sex,Sex recorded as M or F
+behavior,"Behavior: Walking (W), Hiding/Resting (H), Eating (E), Courting (C),Breeding (B), Nesting (N), Other (O)"
+habitat,"Habitat: Oak Rosemary Scrub (ORS), Pine Flatwoods (PFW), Prairie Meadow (PM), Former Wetland (FWL), Other (O)"

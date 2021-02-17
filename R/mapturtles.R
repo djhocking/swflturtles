@@ -27,6 +27,7 @@ individuals_df <- read_csv("analysis/data/raw_data/bauri_individual_info.csv") %
 str(turtles_df) # structure of the data
 summary(turtles_df) # general summary
 (n_turtles <- length(unique(turtles_df$id))) # number of turtles tracked
+(n_turtles <- length(unique(turtles_df$pit)))
 
 # number of observations (non-unique locations) per turtle
 n_obs <- turtles_df %>%
@@ -171,16 +172,17 @@ polys_kernel <- as.data.frame(broom::tidy(kernel_latlon)) %>%
   mutate(id = as.character(id)) %>%
   left_join(individuals_df)
 
-map_turtles_kernels <- ggmap(basemap_turtles, extent = "panel") +
+map_turtles_kernels <- ggmap(basemap_turtles, extent = "panel", maprange = FALSE) +
   geom_polygon(data = polys_kernel,
                aes(x = long, y = lat, fill = id, colour = id),
-               alpha = 0.3) # +
+               alpha = 0.3)  # +
   # coord_cartesian(xlim = c(min(points_latlon@coords[ , 1])-0.0002, max(points_latlon@coords[ , 1])+0.0002),
   #                 ylim = c(min(points_latlon@coords[ , 2])-0.0002, max(points_latlon@coords[ , 2])+0.0002)) +
   # theme(legend.position = c(0.94, 0.72)) +
   # labs(x = "Longitude", y = "Latitude") +
   # ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
 map_turtles_kernels
+
 ggsave(map_turtles2, file = "analysis/figures/tbauri_kernel_90.pdf", width = 8, units = "in")
 
 
