@@ -4,10 +4,16 @@
 # Collaborators: Jordan Donini
 #############################
 
+#----- Set checkpoint -----
+
+library(checkpoint)
+checkpoint("2021-02-15")
+
 #----- Load packages -----
 library(tidyverse)
 library(adehabitatHR) # for mcp function
 library(scales)
+library(ggplot2)
 suppressPackageStartupMessages(library(ggmap))
 library(broom)
 library(ggsn)
@@ -20,8 +26,32 @@ library(lubridate)
 
 if(!dir.exists("analysis/figures")) dir.create("analysis/figures")
 
+#----- Custom functions (move and then source) ------
+
+# consider removing lat and lon axis labels to protect the turtles and because unnecessary
+map_kernel <- function(basemap, raster_df, xmin = -81.79898, xmax = -81.79702, ymin = 26.16420, ymax = 26.16769) {
+  map_k90 <- ggmap(basemap, extent = "normal") +
+    geom_raster(data = raster_df, aes(x = lon, y = lat, fill = Density), alpha = 0.5) +
+    coord_cartesian(xlim = c(xmin, xmax),
+                    ylim = c(ymin, ymax)) +
+    # coord_fixed() +
+    scale_fill_viridis(option = "magma") +
+    facet_wrap(vars(season)) + # make wrap variable an option
+    # theme(legend.position = "bottom") + # c(0.90, 0.72)) +
+    labs(x = "Longitude", y = "Latitude") +
+    ggsn::scalebar(raster_df, dist = 25, st.size = 4, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84", st.color = "white", location = "bottomright") +
+    theme_bw() +
+    theme(legend.justification = c(1, 1),
+          legend.position = c(1, 1),
+          plot.title = element_text(hjust = 0.5)) +
+    ggtitle(paste0("Individual: ", unique(raster_df$id), " (", unique(raster_df$sex), ")"))
+
+  return(map_k90)
+}
+
 #----- Load data -----
-turtles_df <- readRDS("analysis/data/derived_data/turtle_telemetry.rds") # data recorded on GPS in WGS84
+# turtles_df <- readRDS("analysis/data/derived_data/turtle_telemetry.rds") # data recorded on GPS in WGS84
+turtles_df <- read_csv("analysis/data/raw_data/bauri_telemetry_data_Naples_Preserve_2019-2020.csv")
 individuals_df <- read_csv("analysis/data/raw_data/bauri_individual_info.csv") %>% # individual covariates including sex
   mutate(id = as.character(id))
 
@@ -42,6 +72,11 @@ turtles_df <- turtles_df %>%
 # number of observations (non-unique locations) per turtle
 n_obs <- turtles_df %>%
   dplyr::mutate(id = paste0(id, "_", pit)) %>%
+  group_by(id) %>%
+  summarise(obs = n())
+n_obs
+
+n_obs <- turtles_df %>%
   group_by(id) %>%
   summarise(obs = n())
 n_obs
@@ -69,6 +104,7 @@ points_utm1 <- points_utm[ , "id"]
 
 #----- Calculate MCPs -----
 turtles_mcp <- mcp(points_utm1, percent = 100, unin = "m", unout = "ha")
+turtles_mcp_100 <- turtles_mcp
 
 # View results
 turtles_mcp
@@ -165,6 +201,7 @@ points_utm1 <- points_utm[ , "id"]
 
 #----- Calculate MCPs -----
 turtles_mcp <- mcp(points_utm1, percent = 100, unin = "m", unout = "ha")
+turtles_mcp_sex_season <- turtles_mcp
 
 # View results
 turtles_mcp
@@ -173,17 +210,17 @@ summary(turtles_mcp)
 # Plot the home range size by percent MCP
 mcp_ranges <- mcp.area(points_utm1, percent = seq(50, 100, by = 5),
                        unin = c("m"),
-                       unout = c("ha"), plotit = TRUE)
+                       unout = c("ha"), plotit = FALSE)
 
 points_latlon <- spTransform(points_sp, CRS("+proj=longlat"))
 mcp_latlon <- spTransform(turtles_mcp, CRS("+proj=longlat"))
 
 # ggmap now requires registration with google - consider other options
-basemap_turtles <- get_map(location = c(lon = mean(points_latlon@coords[ , 1]),
-                                        lat = mean(points_latlon@coords[ , 2])),
-                           maptype = "satellite",
-                           zoom = 17,
-                           source = "google")
+# basemap_turtles <- get_map(location = c(lon = mean(points_latlon@coords[ , 1]),
+#                                         lat = mean(points_latlon@coords[ , 2])),
+#                            maptype = "satellite",
+#                            zoom = 17,
+#                            source = "google")
 
 # make dataframe for use in ggplot/ggmap
 turtles_sdf <- data.frame(id = as.character(points_latlon@data$id),
@@ -233,80 +270,6 @@ ggsave(map_turtles2, file = "analysis/figures/tbauri_mcp_100_sex_season.png")
 ggsave(map_turtles2, file = "analysis/figures/tbauri_mcp_100_sex_season.tiff", dpi = 1000, width = 8, units = "in")
 
 
-
-
-
-
-
-
-
-seasons <- unique(turtles_df$season)
-points_sp <- list()
-points_utm <- list()
-points_utm1 <- list()
-tutles_mcp <- list()
-points_latlon <- list()
-mcp_latlon <- list()
-for(i in 1:length(sexes)) {
-points_sp[[i]] <- turtles_df %>%
-  dplyr::filter(season == seasons[i]) %>%
-  dplyr::select(id, season, x = lon, y = lat) %>%
-  mutate(x = -1 * x) %>%
-  as.data.frame()
-coordinates(points_sp[[i]]) <- c("x", "y")
-proj4string(points_sp[[i]]) <- CRS( "+proj=longlat +datum=WGS84") # +units=m +no_defs" )
-points_utm[[i]] <- spTransform(points_sp[[i]], CRS("+proj=utm +zone=17 +datum=WGS84 +units=m"))
-points_utm1[[i]] <- points_utm[[i]]
-points_utm1[[i]] <- points_utm[[i]][ , "id"]
-turtles_mcp[[i]] <- mcp(points_utm1[[i]], percent = 100, unin = "m", unout = "ha")
-
-points_latlon[[i]] <- spTransform(points_sp[[i]], CRS("+proj=longlat"))
-mcp_latlon[[i]] <- spTransform(turtles_mcp[[i]], CRS("+proj=longlat"))
-}
-
-# season_info <- turtles_df %>%
-#   dplyr::mutate(id = as.character(id),
-#                 x = -1 * lon,
-#                 y = lat) %>%
-#   dplyr::select(id, date, season, x, y) %>%
-#   distinct()
-
-turtles_sdf <- data.frame(id = c(as.character(points_latlon[[1]]@data$id),
-                                 as.character(points_latlon[[2]]@data$id)),
-                          season = c(as.character(points_latlon[[1]]@data$season),
-                                     as.character(points_latlon[[2]]@data$season)),
-                          rbind(points_latlon[[1]]@coords, points_latlon[[2]]@coords)) %>%
-  left_join(individuals_df)
-
-# ggmap now requires registration with google - consider other options
-basemap_turtles <- get_map(location = c(lon = mean(points_latlon[[1]]@coords[ , 1]),
-                                        lat = mean(points_latlon[[1]]@coords[ , 2])),
-                           maptype = "satellite",
-                           zoom = 17,
-                           source = "google")
-
-# make dataframe for use in ggplot/ggmap
-# turtles_sdf <- data.frame(id = as.character(points_latlon@data$id),
-#                           points_latlon@coords) %>%
-#   left_join(individuals_df)
-
-polys <- bind_rows(as.data.frame(broom::tidy(mcp_latlon[[1]])), as.data.frame(broom::tidy(mcp_latlon[[2]]))) %>%
-  mutate(id = as.character(id)) %>%
-  left_join(individuals_df) %>%
-  left_join(mutate(turtles_sdf, long = x, lat = y))
-
-map_turtles1 <- ggmap(basemap_turtles, extent = "panel") +
-  geom_polygon(data = polys,
-               aes(x = long, y = lat, fill = id, colour = id),
-               alpha = 0.3) +
-  # geom_point(data = turtles_sdf,
-  #            aes(x = x, y = y, colour = id))  +
-  coord_cartesian(xlim = c(min(points_latlon[[1]]@coords[ , 1])-0.0002, max(points_latlon@coords[[1]][ , 1])+0.0002),
-                  ylim = c(min(points_latlon[[1]]@coords[ , 2])-0.0002, max(points_latlon@coords[[1]][ , 2])+0.0002)) +
-  theme(legend.position = c(0.94, 0.72)) +
-  labs(x = "Longitude", y = "Latitude") +
-  ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
-
 #----------- MCP by season and sex -----------
 
 
@@ -320,6 +283,7 @@ map_turtles1 <- ggmap(basemap_turtles, extent = "panel") +
 # need to do mcps by those groups then combine into one
 
 #----- Kernal density estimates and maps -----
+
 ############ problem with kernals is doesn't limit by fence
 library(sf)
 library(rgeos)
@@ -328,10 +292,10 @@ library(leaflet)
 # bivariate normal utilization distribtution for prob density of finding animal at a point
 
 # base kernel with default ad hoc smoothing factor
-turtle_kernel <- kernelUD(points_utm, h = "href", )  # href = the reference bandwidth
+turtle_kernel <- kernelUD(points_utm1, h = "href")  # href = the reference bandwidth
 
 # kernel using Least Square Cross Validation for smoother
-turtle_kernel_lscv <- kernelUD(points_utm, h = "LSCV")
+turtle_kernel_lscv <- kernelUD(points_utm1, h = "LSCV")
 
 # plotLSCV(turtle_kernel_lscv)
 
@@ -341,130 +305,72 @@ class(turtle_kernel)
 kernel_sp <- getverticeshr(turtle_kernel_lscv, percent = 90, unin = "m", unout = "ha")
 data.frame(kernel_sp)
 
-home_ranges <- turtles_mcp %>%
-  data.frame() %>%
+home_ranges <- distinct(points_utm@data) %>%
+  left_join(data.frame(turtles_mcp)) %>%
   rename(mcp_100 = area) %>%
   left_join(data.frame(kernel_sp)) %>%
-    rename(kernel_90 = area)
+    rename(kernel_90 = area) %>%
+  dplyr::mutate(id = stringr::str_extract(id, "[^_]+")) %>%
+  left_join(individuals_df) %>%
+  dplyr::arrange(season, sex, num, id)
+
 write_csv(home_ranges, "analysis/data/derived_data/home_ranges.csv")
 
-kernel_latlon <- spTransform(kernel_sp, CRS("+proj=longlat"))
 
-# make dataframe for use in ggplot/ggmap
-polys_kernel <- as.data.frame(broom::tidy(kernel_latlon)) %>%
-  mutate(id = as.character(id)) %>%
-  left_join(individuals_df)
-
-map_turtles_kernels <- ggmap(basemap_turtles, extent = "panel", maprange = FALSE) +
-  geom_polygon(data = polys_kernel,
-               aes(x = long, y = lat, fill = id, colour = id),
-<<<<<<< HEAD
-               alpha = 0.3)  # +
-  # coord_cartesian(xlim = c(min(points_latlon@coords[ , 1])-0.0002, max(points_latlon@coords[ , 1])+0.0002),
-  #                 ylim = c(min(points_latlon@coords[ , 2])-0.0002, max(points_latlon@coords[ , 2])+0.0002)) +
-  # theme(legend.position = c(0.94, 0.72)) +
-  # labs(x = "Longitude", y = "Latitude") +
-  # ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
-=======
-               alpha = 0.3)  +
-  facet_wrap(~sex) +
-  coord_cartesian(xlim = c(min(points_latlon@coords[ , 1])-0.0002, max(points_latlon@coords[ , 1])+0.0002),
-                  ylim = c(min(points_latlon@coords[ , 2])-0.0002, max(points_latlon@coords[ , 2])+0.0002)) +
-  theme(legend.position = c(0.94, 0.72)) +
-  labs(x = "Longitude", y = "Latitude") +
-  ggsn::scalebar(polys, dist = 25, st.size=3, height=0.01, dist_unit = "m", transform = TRUE, model = "WGS84")
-
->>>>>>> 6282062f4edbc1677ccc1c597dc1feb724ce323a
-map_turtles_kernels
-
-ggsave(map_turtles2, file = "analysis/figures/tbauri_kernel_90.pdf", width = 8, units = "in")
-
+#---------- Plot Kernel Densities -------------
 
 kernel_vol <- getvolumeUD(turtle_kernel_lscv)
 
-image(kernel_vol[[1]])
-# plot(kernel_vol[[2]], add = T)
-xyzv <- as.image.SpatialGridDataFrame(kernel_vol[[1]])
-contour(xyzv, add=TRUE)
+names(kernel_vol)
+raster_dry_1 <- raster(as(kernel_vol$`1_Dry`,"SpatialPixelsDataFrame")) # convert to raster
 
-image(kernel_vol[[2]])
-contour(as.image.SpatialGridDataFrame(kernel_vol[[2]]), add=TRUE)
+raster_dry_1_latlon <- raster::projectRaster(raster_dry_1, crs = "+proj=longlat +datum=WGS84") # reproject raster to latlon
+raster_dry_1_pts_latlon <- raster::rasterToPoints(raster_dry_1_latlon, spatial = TRUE) # convert to points
 
-turtle_kernel_lscv2 <- kernelUD(points_utm, h = "LSCV", same4all = TRUE)
-# kernel_vol2 <- getvolumeUD(turtle_kernel_lscv, same4all = TRUE)
-foo <- estUDm2spixdf(turtle_kernel_lscv2)
-plot(foo) # potential to separate them or add them all on the basemap?
-# image(foo)
+# convert to dataframe and filter to 90% kernel density max
+raster_dry_1_df <- as.data.frame(raster_dry_1_pts_latlon, xy = TRUE) %>%
+  dplyr::filter(n <= 90) %>%
+  dplyr::select(lon = x, lat = y, Density = n)
 
-crs(kernel_vol[[1]]) <- "+proj=utm +zone=17 +datum=WGS84 +units=m"
-kernel_vol[[1]] <- projectRaster(raster(kernel_vol[[1]]), crs = "+proj=longlat")
-kernal_rasters <- list()
-# kernal_rasters[[1]] <- as.data.frame(broom::tidy(kernel_vol[[1]]))
+for(i in 1:length(names(kernel_vol))) {
 
+  raster_dry_1 <- raster(as(kernel_vol[[names(kernel_vol)[i]]],"SpatialPixelsDataFrame")) # convert to raster
 
-kernal_rasters[[1]] <- as.data.frame.estUD(kernel_vol[[1]]) %>%
-  rename(lon = x, lat = y)
-# projectRaster(kernal_rasters[[1]], crs = "+proj=longlat")
-# crs(kernal_rasters[[1]]) <- "+proj=utm +zone=17 +datum=WGS84 +units=m"
+  raster_dry_1_latlon <- raster::projectRaster(raster_dry_1, crs = "+proj=longlat +datum=WGS84") # reproject raster to latlon
+  raster_dry_1_pts_latlon <- raster::rasterToPoints(raster_dry_1_latlon, spatial = TRUE) # convert to points
 
-rtp <- rasterToPolygons(kernel_vol[[1]])
+  # convert to dataframe and filter to 90% kernel density max
+  tmp <- as.data.frame(raster_dry_1_pts_latlon, xy = TRUE) %>%
+    dplyr::filter(n <= 90) %>%
+    dplyr::select(lon = x, lat = y, Density = n) %>%
+    dplyr::mutate(grp = names(kernel_vol)[i]) %>%
+    tidyr::separate(grp, into = c("id", "season"), sep = "_") %>%
+    mutate(id = as.character(id)) %>%
+    left_join(individuals_df)
 
-bm <- ggmap(basemap_turtles, extent = "panel")
-bm +
-  geom_polygon(data = rtp,
-               aes(x = long, y = lat,
-                   fill = rep(rtp$n, each = 5)),
-               size = 0,
-               alpha = 0.5)  +
-  scale_fill_gradientn("RasterValues", colors = topo.colors(255))
+  if(i == 1) {
+    raster_dry_1_df <- tmp
+  } else {
+    raster_dry_1_df <- dplyr::bind_rows(raster_dry_1_df, tmp)
+  }
 
-ggmap(basemap_turtles, extent = "panel") +
-  inset_raster(raster(kernel_vol[[1]]))
-
-ggmap(basemap_turtles, extent = "panel") +
-  inset_raster(raster(xyzv))
+}
 
 
+for(i in 1:length(unique(raster_dry_1_df$id))) {
+  df1 <- raster_dry_1_df %>%
+    dplyr::filter(id == unique(raster_dry_1_df$id)[i])
+  m2 <- map_kernel(basemap = basemap_turtles, raster_df = df1)
 
-ggmap(basemap_turtles, extent = "panel") +
-  geom_raster(kernal_rasters[[1]], aes(lon, lat))
-
-
-ggmap(basemap_turtles, extent = "panel") +
-  # ggplot(data = xyzv, aes(x, y)) +
-  geom_tile(xyzv, aes(x, y, fill = z))
-
-
-ggplot(kernel_vol[[1]], aes(lon, lat, fill = n))
+  ggsave(filename = paste0("analysis/figures/kernel_map_season_", unique(df1$id), ".tiff"), plot = m2, height = 10, width = 14, units = "in", dpi = 100)
+}
 
 
-kernel_latlon %>%
-  st_as_sf() %>%
-  leaflet() %>%
-  addTiles() %>%
-  addPolygons(fillColor = id, group = id)
-
-kernel_latlon %>%
-  st_as_sf() %>%
-  leaflet() %>%
-  addTiles() %>%
-  # addRasterImage(raster(kernal_rasters[[1]]))
-  addRasterImage(raster(kernel_vol[[1]]), opacity = 0.5)
-# addRasterImage(xyzv)
-
-str(raster(kernel_vol[[1]]))
-summary(raster(kernel_vol[[1]])@data@values)
-hist(raster(kernel_vol[[1]])@data@values)
 
 
-foo <- raster(kernel_vol[[1]]) # filter to values <90?
-
-kernel_latlon %>%
-  st_as_sf() %>%
-  leaflet() %>%
-  addTiles() %>%
-  # addRasterImage(raster(kernal_rasters[[1]]))
-  addRasterImage(raster(kernel_vol[[1]]), opacity = 0.5)
+df1 <- raster_dry_1_df %>%
+  dplyr::filter(id == 1)
+m1 <- map_kernel(basemap = basemap_turtles, raster_df = df1)
 
 
 
